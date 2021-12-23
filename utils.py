@@ -129,8 +129,36 @@ def avg_multiple_spikes(spike_data, no_of_spikes):
 
     return avg_spikes
 
+def gmm_feature(features_array, 
+                num_peaks):
+
+    '''
+    '''
+
+    gmm = GaussianMixture(n_components=num_peaks, 
+                          random_state=0).fit(features_array)
+
+    return gmm
+
+def peaks_gmm_model(features_array,
+                    gmm_object):
+
+    '''
+    '''
+
+    feature_max_value = max(features_array)
+    feature_min_value = min(features_array)
+
+    feature_array = np.linspace(feature_min_value, feature_max_value, 100)
+    feature_probs = gmm_object.predict_proba(feature_array)
+
+    plt.plot(feature_probs)
+    plt.show()
+
+    return feature_probs
+
 if __name__ == '__main__':
-    num_spikes = 1000
+    num_spikes = 10000
 
     spike_binary_file = read_binary_file('Spikes')
 
@@ -150,7 +178,12 @@ if __name__ == '__main__':
     print('Parameter Units lenght', mat_data['sp_u'][0][0][0])
     print('Spike Times:', spike_time_data[:20])
 
-    ground_truth = mat_data['sp_u'][0][0][0][:num_spikes]
+    ground_truth = mat_data['sp_u'][0][0][0]#[:num_spikes]
+    ground_truth_time = list(mat_data['sp'][0][0][0])
+
+    ground_noise_label = []
+    idx_readed = 0
+
     print(len(ch1_data), len(ch2_data), len(ch3_data), len(ch4_data))
 
     print('Shape of spike data',np.shape(spike_data_4_channel))
@@ -163,23 +196,70 @@ if __name__ == '__main__':
     avg_multi_spikes = avg_multiple_spikes(avg_ch_data,
                                         num_spikes)
 
-    print(avg_ch_data[:20])
-
     pca = PCA(n_components = 2)
 
     pca.fit(spike_data_4_channel)
 
     Y = pca.fit_transform(spike_data_4_channel)
-    gm = GaussianMixture(n_components=8 , random_state=0).fit(Y)
+
+    num_peaks_feature_gmm = 8
+    #feature_array = np.array([Y[:,0]])
+    #feature_array = np.reshape(feature_array,(len(Y[:,0]),1))
+    #feature_gmm_object = gmm_feature(feature_array, 
+    #                                 num_peaks_feature_gmm)
+    
+    #peaks_feature_gmm_model = peaks_gmm_model(feature_array,
+    #                                          feature_gmm_object)
+
+    gm = GaussianMixture(n_components=7 , random_state=0).fit(Y)
 
     labels = gm.predict(Y)
+
+    #X_axis = np.array([np.linspace(-3000,6000,100)])
+    #Y_axis = np.array([np.linspace(-3000,5000)]).T
+
+    #Z_axis = 
+
+    
+
+    for i in range(num_spikes):
+
+        simulation_time = spike_time_data[i]
+
+        spike_is_noise = True
+        j = 0
+
+        for real_time in ground_truth_time[idx_readed:]:
+
+            j += 1
+
+            if np.abs(simulation_time-real_time) < 1:
+
+                ground_noise_label.append(ground_truth[ground_truth_time.index(real_time)])
+                idx_readed = ground_truth_time.index(real_time)
+                spike_is_noise = False
+                break
+            elif real_time>simulation_time:
+                break
+        
+        print('Number of iterations completed:', j, i)
+        if spike_is_noise:
+            ground_noise_label.append(0)
+
+    ground_noise_label = np.array(ground_noise_label)
+    Y_ground_truth = Y[ground_noise_label!=0]
+    Y_ground_label = ground_noise_label[ground_noise_label!=0]
+
+    gm = GaussianMixture(n_components=8 , random_state=0).fit(Y_ground_truth)
+
+    labels = gm.predict(Y_ground_truth)
 
     print('Shape of spike data',np.shape(Y))
 
     plt.subplot(2,1,1)
-    plt.scatter(Y[:,0], Y[:,1], c = labels)
+    plt.scatter(Y_ground_truth[:,0], Y_ground_truth[:,1], c = labels)#facecolors='none', edgecolors=labels)
     plt.subplot(2,1,2)
-    plt.scatter(Y[:,0], Y[:,1], c = ground_truth )
+    plt.scatter(Y_ground_truth[:,0], Y_ground_truth[:,1], c = Y_ground_label)#facecolors='none', edgecolors=ground_noise_label)#c = ground_noise_label )
     plt.show()
 
     #plt.plot(ch3_data[:64])
