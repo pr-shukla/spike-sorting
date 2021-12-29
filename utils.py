@@ -1,9 +1,12 @@
+import json
+
 import numpy as np
 import scipy.io
 import matplotlib.pyplot as plt
 
 from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
+from sklearn.cluster import MeanShift
 
 num_channels = 4
 num_samples = 64
@@ -157,6 +160,49 @@ def peaks_gmm_model(features_array,
 
     return feature_probs
 
+def metrics(prediction_label, 
+            groundtruth_label,
+            max_time):
+
+    '''
+    '''
+
+    final_output = {}
+
+    different_prediction_labels = []
+    different_groundtruth_labels = []
+
+    
+    different_prediction_labels = list(range(min(prediction_label),max(prediction_label)+1))
+    different_groundtruth_labels = list(range(min(groundtruth_label),max(groundtruth_label)+1))
+    print(different_groundtruth_labels,different_prediction_labels)
+    for i in different_groundtruth_labels:
+
+        groundtruth_accuracy_dict = {}
+        prediction_corresponding_i_unit = np.array(prediction_label)[groundtruth_label==i]
+
+        for j in different_prediction_labels:
+
+            
+            n1 = (len(prediction_corresponding_i_unit)-(list(prediction_corresponding_i_unit).count(j)))
+            n2 = list(prediction_corresponding_i_unit).count(j)
+            n3 = ((list(prediction_label).count(j))-n2)
+
+            acc = n2/(n1+n2+n3)
+
+            groundtruth_accuracy_dict[j] = acc
+
+        #print(groundtruth_accuracy_dict)
+        max_acc = max(groundtruth_accuracy_dict.values())
+
+        num_spikes = list(groundtruth_label).count(i)
+        final_output['Unit '+str(i)] = {'acc':max_acc,'spike_rate':num_spikes*10**7/max_time}
+
+    return final_output
+
+        
+
+
 if __name__ == '__main__':
     num_spikes = 10000
 
@@ -211,17 +257,17 @@ if __name__ == '__main__':
     #peaks_feature_gmm_model = peaks_gmm_model(feature_array,
     #                                          feature_gmm_object)
 
-    gm = GaussianMixture(n_components=7 , random_state=0).fit(Y)
+    #gm = GaussianMixture(n_components=7 , random_state=0).fit(Y)
 
-    labels = gm.predict(Y)
+    #labels = gm.predict(Y)
 
     #X_axis = np.array([np.linspace(-3000,6000,100)])
     #Y_axis = np.array([np.linspace(-3000,5000)]).T
 
     #Z_axis = 
 
+    '''
     
-
     for i in range(num_spikes):
 
         simulation_time = spike_time_data[i]
@@ -233,9 +279,10 @@ if __name__ == '__main__':
 
             j += 1
 
-            if np.abs(simulation_time-real_time) < 1:
+            #print(simulation_time, real_time, np.abs(simulation_time-real_time))
+            if np.abs(simulation_time-real_time) < 2:
 
-                ground_noise_label.append(ground_truth[ground_truth_time.index(real_time)])
+                ground_noise_label.append(int(ground_truth[ground_truth_time.index(real_time)]))
                 idx_readed = ground_truth_time.index(real_time)
                 spike_is_noise = False
                 break
@@ -244,22 +291,79 @@ if __name__ == '__main__':
         
         print('Number of iterations completed:', j, i)
         if spike_is_noise:
+            #print('Hitted Noise')
             ground_noise_label.append(0)
 
+    #print('Ground Noise Level:',ground_noise_label)
+    #print('DataSet Ground Labels without Noise:', ground_truth[:num_spikes])
+
+    ground_noise_label_dict = {'Ground_Noise_Label': ground_noise_label}
+    #print(ground_noise_label_dict)
+
+    
+    json_object = json.dumps(ground_noise_label_dict)
+  
+    # Writing to sample.json
+    with open("ground_noise_label.json", "w") as outfile:
+        outfile.write(json_object)
+'''
+
+    file = open('ground_noise_label.json')
+    ground_noise_label = json.load(file)['Ground_Noise_Label']
     ground_noise_label = np.array(ground_noise_label)
+    
+    Y_ground_truth = Y[np.all([ ground_noise_label!=0,
+                                ground_noise_label!=8,
+                                ground_noise_label!=7], axis = 0)]
+    Y_ground_label = ground_noise_label[np.all([
+                                        ground_noise_label!=0,
+                                        ground_noise_label!=8,
+                                        ground_noise_label!=7], axis = 0)]
+
     Y_ground_truth = Y[ground_noise_label!=0]
     Y_ground_label = ground_noise_label[ground_noise_label!=0]
+    #gm = GaussianMixture(n_components=8 , random_state=0).fit(Y_ground_truth)
 
-    gm = GaussianMixture(n_components=8 , random_state=0).fit(Y_ground_truth)
+    #labels = gm.predict(Y_ground_truth)
 
-    labels = gm.predict(Y_ground_truth)
+    clustering = MeanShift(bandwidth=500).fit(Y_ground_truth)
+    labels = clustering.labels_
 
     print('Shape of spike data',np.shape(Y))
 
+    acc_metrics = metrics(labels, Y_ground_label,max(ground_truth_time[:num_spikes]))
+    print('Accuracy of the model:',acc_metrics)
+
+    avg_acc = 0
+    for unit_acc in acc_metrics:
+
+        avg_acc += acc_metrics[unit_acc]['acc']
+
+    avg_acc /= len(acc_metrics)
+
+    print('Avg Accuracy:', avg_acc)
+
+    acc_list = []
+    spike_rate_list = []
+    for unit_acc in acc_metrics:
+
+        print(unit_acc,':',acc_metrics[unit_acc])
+
+        acc_list.append(acc_metrics[unit_acc]['acc'])
+        spike_rate_list.append(acc_metrics[unit_acc]['spike_rate'])
+
+
     plt.subplot(2,1,1)
     plt.scatter(Y_ground_truth[:,0], Y_ground_truth[:,1], c = labels)#facecolors='none', edgecolors=labels)
+    plt.title('Prediction')
     plt.subplot(2,1,2)
     plt.scatter(Y_ground_truth[:,0], Y_ground_truth[:,1], c = Y_ground_label)#facecolors='none', edgecolors=ground_noise_label)#c = ground_noise_label )
+    plt.title('Ground Truth')
+    plt.show()
+
+    plt.scatter(spike_rate_list, acc_list)
+    plt.xlabel('Spike Rate')
+    plt.ylabel('Accuracy')
     plt.show()
 
     #plt.plot(ch3_data[:64])
