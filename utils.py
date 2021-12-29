@@ -108,6 +108,12 @@ def spike_data_from_channels(no_of_spikes, filename):
 
     return channel1_data, channel2_data, channel3_data, channel4_data, spike_data_4_channel
 
+def jsonify_output():
+
+    '''
+    '''
+
+    return
 def avg_spikes_channels(ch1, ch2, ch3, ch4):
 
     '''
@@ -197,13 +203,13 @@ if __name__ == '__main__':
 
     #print('Shape of spike data',np.shape(spike_data_4_channel))
 
-    avg_ch_data = avg_spikes_channels(ch1_data,
-                                    ch2_data,
-                                    ch3_data,
-                                    ch4_data)
+    #avg_ch_data = avg_spikes_channels(ch1_data,
+    #                                ch2_data,
+    #                                ch3_data,
+    #                                ch4_data)
 
-    avg_multi_spikes = avg_multiple_spikes(avg_ch_data,
-                                        num_spikes)
+    #avg_multi_spikes = avg_multiple_spikes(avg_ch_data,
+    #                                    num_spikes)
 
     pca = PCA(n_components = 2)
 
@@ -211,7 +217,7 @@ if __name__ == '__main__':
 
     Y = pca.fit_transform(spike_data_4_channel)
 
-    num_peaks_feature_gmm = 8
+    #num_peaks_feature_gmm = 8
     #feature_array = np.array([Y[:,0]])
     #feature_array = np.reshape(feature_array,(len(Y[:,0]),1))
     #feature_gmm_object = gmm_feature(feature_array, 
