@@ -8,6 +8,8 @@ from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import MeanShift
 
+from metrics import isolation_distance, accuracy_metrics
+
 num_channels = 4
 num_samples = 64
 
@@ -35,20 +37,25 @@ def read_binary_file(filename):
 
     return file
 
-def spike_times(file, no_of_spikes, filename):
+def spike_times(duration_in_hrs, filename):
 
     '''
     '''
 
-    spike_time_data = list(file.read(no_of_spikes))
+    duration_in_sec = duration_in_hrs*3600
+    num_samples = 30000*duration_in_sec
 
     filepath = 'F:/Neuroscience/data/' + filename
 
-    spike_time_data = np.fromfile(filepath, dtype=np.uint64,count=no_of_spikes)    
+    spike_time_data = np.fromfile(filepath, dtype=np.uint64)
 
-    return spike_time_data
+    for i in range(len(spike_time_data)):
+        if spike_time_data[i] >num_samples:
+            break
+    
+    return spike_time_data[:i]
 
-def spike_data_from_channels(file, no_of_spikes, filename):
+def spike_data_from_channels(no_of_spikes, filename):
 
     '''
     '''
@@ -56,8 +63,6 @@ def spike_data_from_channels(file, no_of_spikes, filename):
     no_of_samples = no_of_spikes*num_channels*num_samples
 
     filepath = 'F:/Neuroscience/data/' + filename
-
-    data = list(file.read(no_of_samples))
 
     data = np.fromfile(filepath, dtype=np.int16, count=no_of_samples)
 
@@ -160,79 +165,37 @@ def peaks_gmm_model(features_array,
 
     return feature_probs
 
-def metrics(prediction_label, 
-            groundtruth_label,
-            max_time):
-
-    '''
-    '''
-
-    final_output = {}
-
-    different_prediction_labels = []
-    different_groundtruth_labels = []
-
-    
-    different_prediction_labels = list(range(min(prediction_label),max(prediction_label)+1))
-    different_groundtruth_labels = list(range(min(groundtruth_label),max(groundtruth_label)+1))
-    print(different_groundtruth_labels,different_prediction_labels)
-    for i in different_groundtruth_labels:
-
-        groundtruth_accuracy_dict = {}
-        prediction_corresponding_i_unit = np.array(prediction_label)[groundtruth_label==i]
-
-        for j in different_prediction_labels:
-
-            
-            n1 = (len(prediction_corresponding_i_unit)-(list(prediction_corresponding_i_unit).count(j)))
-            n2 = list(prediction_corresponding_i_unit).count(j)
-            n3 = ((list(prediction_label).count(j))-n2)
-
-            acc = n2/(n1+n2+n3)
-
-            groundtruth_accuracy_dict[j] = acc
-
-        #print(groundtruth_accuracy_dict)
-        max_acc = max(groundtruth_accuracy_dict.values())
-
-        num_spikes = list(groundtruth_label).count(i)
-        final_output['Unit '+str(i)] = {'acc':max_acc,'spike_rate':num_spikes*10**7/max_time}
-
-    return final_output
-
-        
-
 
 if __name__ == '__main__':
-    num_spikes = 10000
 
-    spike_binary_file = read_binary_file('Spikes')
+    time_duration_hrs = 10
+    spike_time_data = spike_times(time_duration_hrs,
+                                  'SpikeTimes')
 
-    ch1_data, ch2_data, ch3_data, ch4_data,spike_data_4_channel = spike_data_from_channels(spike_binary_file ,
-                                                                                           num_spikes,
+    num_spikes = len(spike_time_data)
+
+    print('Number of spikes in',time_duration_hrs, 'hours duration are', num_spikes)
+
+    ch1_data, ch2_data, ch3_data, ch4_data,spike_data_4_channel = spike_data_from_channels(num_spikes,
                                                                                            'Spikes')
 
-    spike_time_binary_file = read_binary_file('SpikeTimes')
 
-    spike_time_data = spike_times(spike_time_binary_file,
-                                  num_spikes,
-                                  'SpikeTimes')
+    spike_data_4_channel = spike_data_4_channel/10
 
     mat_data = read_mat_file('dataset_params')
 
     print('Parameters of dataset:', mat_data.keys())
     print('Parameter Units lenght', mat_data['sp_u'][0][0][0])
-    print('Spike Times:', spike_time_data[:20])
-
+    
     ground_truth = mat_data['sp_u'][0][0][0]#[:num_spikes]
     ground_truth_time = list(mat_data['sp'][0][0][0])
 
     ground_noise_label = []
     idx_readed = 0
 
-    print(len(ch1_data), len(ch2_data), len(ch3_data), len(ch4_data))
+    #print(len(ch1_data), len(ch2_data), len(ch3_data), len(ch4_data))
 
-    print('Shape of spike data',np.shape(spike_data_4_channel))
+    #print('Shape of spike data',np.shape(spike_data_4_channel))
 
     avg_ch_data = avg_spikes_channels(ch1_data,
                                     ch2_data,
@@ -322,17 +285,23 @@ if __name__ == '__main__':
 
     Y_ground_truth = Y[ground_noise_label!=0]
     Y_ground_label = ground_noise_label[ground_noise_label!=0]
+
+    groundtruth_iso_dist = isolation_distance(Y_ground_truth,Y_ground_label)
+    print(groundtruth_iso_dist)
     #gm = GaussianMixture(n_components=8 , random_state=0).fit(Y_ground_truth)
 
     #labels = gm.predict(Y_ground_truth)
 
-    clustering = MeanShift(bandwidth=500).fit(Y_ground_truth)
+    clustering = MeanShift(bandwidth=50).fit(Y_ground_truth)
     labels = clustering.labels_
 
     print('Shape of spike data',np.shape(Y))
 
-    acc_metrics = metrics(labels, Y_ground_label,max(ground_truth_time[:num_spikes]))
+    acc_metrics = accuracy_metrics(labels, Y_ground_label,max(ground_truth_time[:num_spikes]))
     print('Accuracy of the model:',acc_metrics)
+
+    prediction_iso_dist = isolation_distance(Y_ground_truth,labels)
+    print('Isolation Distance:',prediction_iso_dist)
 
     avg_acc = 0
     for unit_acc in acc_metrics:
@@ -345,12 +314,14 @@ if __name__ == '__main__':
 
     acc_list = []
     spike_rate_list = []
+    iso_dist_list = []
     for unit_acc in acc_metrics:
 
         print(unit_acc,':',acc_metrics[unit_acc])
 
         acc_list.append(acc_metrics[unit_acc]['acc'])
         spike_rate_list.append(acc_metrics[unit_acc]['spike_rate'])
+        iso_dist_list.append(groundtruth_iso_dist[unit_acc]['iso_dist'])
 
 
     plt.subplot(2,1,1)
@@ -361,8 +332,8 @@ if __name__ == '__main__':
     plt.title('Ground Truth')
     plt.show()
 
-    plt.scatter(spike_rate_list, acc_list)
-    plt.xlabel('Spike Rate')
+    plt.scatter(iso_dist_list, acc_list)
+    plt.xlabel('Isolation Distance')
     plt.ylabel('Accuracy')
     plt.show()
 
