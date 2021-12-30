@@ -557,8 +557,8 @@ if __name__ == '__main__':
     print('Avg Accuracy:', avg_acc)
 
     # Create list for accuracy metrics and isolation distance 
-    # metric to make scatter plot
-    
+    # metric to make scatter plot of metrics
+
     acc_list = []
     spike_rate_list = []
     iso_dist_list = []
