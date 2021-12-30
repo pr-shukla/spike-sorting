@@ -367,18 +367,26 @@ if __name__ == '__main__':
                                   'SpikeTimes')
     
     # Call function to read parameters file
-    
+
     mat_data = read_mat_file('dataset_params')
 
     print('Parameters of dataset:', mat_data.keys())
     
+    # Ground truth labels for true spikes
+
     ground_truth = mat_data['sp_u'][0][0][0]#[:num_spikes]
     
+    # Ground truth time for true spikes
+
     ground_truth_time = list(mat_data['sp'][0][0][0])
+
+    # Number of spikes corresponding to given time duration
 
     num_spikes = len(spike_time_data)
 
     print('Number of spikes in',time_duration_hrs, 'hours duration are', num_spikes)
+
+    # Jsonify ground truth labels for simulation spikes
 
     if jsonify_output:
         jsonify_simulation_labels(num_spikes,
@@ -386,8 +394,14 @@ if __name__ == '__main__':
                                   ground_truth_time,
                                   ground_truth)
 
+    # Read spike waveforms from binary file 
+    # and convert waveform data into N*256
+    # matrix
+
     ch1_data, ch2_data, ch3_data, ch4_data,spike_data_4_channel = spike_data_from_channels(num_spikes,
                                                                                            'Spikes')
+
+    # Scale down spike waveforms by 10
 
     spike_data_4_channel = spike_data_4_channel/10
 
@@ -403,10 +417,17 @@ if __name__ == '__main__':
     #avg_multi_spikes = avg_multiple_spikes(avg_ch_data,
     #                                    num_spikes)
 
+    # create object for 8 PCA components
+
     pca = PCA(n_components = 8)
+
+    # Create PCA model with spike data
 
     pca.fit(spike_data_4_channel)
 
+    # Convert 256 dim spike data into 8 dim
+    # PCA components
+    
     Y = pca.fit_transform(spike_data_4_channel)
 
     #num_peaks_feature_gmm = 8
@@ -469,11 +490,18 @@ if __name__ == '__main__':
     with open("ground_noise_label.json", "w") as outfile:
         outfile.write(json_object)
 '''
-
+    # Read data corresponding to labels of simulation spikes
+     
     file = open('ground_noise_label.json')
     ground_noise_label = json.load(file)['Ground_Noise_Label']
+
+    # convert labels from list to array
+
     ground_noise_label = np.array(ground_noise_label)
     
+    # Filter data which is not noise and others labels need
+    # to be filtered as per requirements 
+
     Y_ground_truth = Y[np.all([ ground_noise_label!=0,
                                 ground_noise_label!=8,
                                 ground_noise_label!=7], axis = 0)]
@@ -482,8 +510,14 @@ if __name__ == '__main__':
                                         ground_noise_label!=8,
                                         ground_noise_label!=7], axis = 0)]
 
+    # Filter noise only, any one of the data will be used from above one
+    # and the this one
+
     Y_ground_truth = Y[ground_noise_label!=0]
     Y_ground_label = ground_noise_label[ground_noise_label!=0]
+
+    # Calculate isolation distance corresponding to ground truth cluster
+    # labels
 
     groundtruth_iso_dist = isolation_distance(Y_ground_truth,Y_ground_label)
     print(groundtruth_iso_dist)
@@ -491,16 +525,27 @@ if __name__ == '__main__':
 
     #labels = gm.predict(Y_ground_truth)
 
+    # Create model for clustering
     clustering = MeanShift(bandwidth=100).fit(Y_ground_truth)
+    
+    # Calculate prediction labels using clustering model
+
     labels = clustering.labels_
 
     print('Shape of spike data',np.shape(Y))
 
+    # Calculate accuracy of the prediction using ground
+    # truth labels and prediction labels
+ 
     acc_metrics = accuracy_metrics(labels, Y_ground_label,max(ground_truth_time[:num_spikes]))
     print('Accuracy of the model:',acc_metrics)
 
+    # Calculate isolation distance for prediction label clusters
+
     prediction_iso_dist = isolation_distance(Y_ground_truth,labels)
     print('Isolation Distance:',prediction_iso_dist)
+    
+    # Calculate avg accuracy of all the clusters
 
     avg_acc = 0
     for unit_acc in acc_metrics:
@@ -511,6 +556,9 @@ if __name__ == '__main__':
 
     print('Avg Accuracy:', avg_acc)
 
+    # Create list for accuracy metrics and isolation distance 
+    # metric to make scatter plot
+    
     acc_list = []
     spike_rate_list = []
     iso_dist_list = []
