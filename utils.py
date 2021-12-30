@@ -1,24 +1,47 @@
+import json
+
 import numpy as np
 import scipy.io
 import matplotlib.pyplot as plt
 
 from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
+from sklearn.cluster import MeanShift
+
+from metrics import isolation_distance, accuracy_metrics
+
+# Number of Channels in tetrode
 
 num_channels = 4
+
+# Number of samples for single spike
+
 num_samples = 64
 
 def read_mat_file(filename):
+    
     '''
+    Read .mat file
+
+    Parameters
+    ----------
+    filename: str
+        Name of the .mat file to be read
+
+    Returns
+    -------
+    mat: dict
+        Dictionary with keys as parameters and values
+        are parameter value
     '''
 
     filepath = filepath = 'F:/Neuroscience/data/' + filename + '.mat'
 
+    # Reading .mat file
+
     mat = scipy.io.loadmat(filepath)
 
     return mat
-
-
 
 def read_binary_file(filename):
 
@@ -32,29 +55,75 @@ def read_binary_file(filename):
 
     return file
 
-def spike_times(file, no_of_spikes, filename):
+def spike_times(duration_in_hrs, 
+                filename):
 
     '''
+    Read SpikeTimes file
+
+    Parameters
+    ----------
+    duration_in_hrs: float
+        Time duration upto which spikes need to be
+        considered
+    filename: str
+        Name of the file to be read
+
+    Returns
+    -------
+    time_series: numpy.array
+        Time Bin at which spikes occured upto time
+        duration_in_hrs
     '''
 
-    spike_time_data = list(file.read(no_of_spikes))
+    # convert time from hrs to seconds
+
+    duration_in_sec = duration_in_hrs*3600
+
+    # Number of samples corresponding to 30 kHz frequency
+
+    num_samples = 30000*duration_in_sec
 
     filepath = 'F:/Neuroscience/data/' + filename
 
-    spike_time_data = np.fromfile(filepath, dtype=np.uint64,count=no_of_spikes)    
+    # Reading binary file with data stored in uint64 dtype
 
-    return spike_time_data
+    spike_time_data = np.fromfile(filepath, dtype=np.uint64)
 
-def spike_data_from_channels(file, no_of_spikes, filename):
+    # Count number of samples 'i' upto given time duration
+
+    for i in range(len(spike_time_data)):
+        if spike_time_data[i] >num_samples:
+            break
+    
+    # Returns samples upto ith bin
+
+    return spike_time_data[:i]
+
+def spike_data_from_channels(no_of_spikes, 
+                             filename):
 
     '''
+    Reads binary file for simulation spike data and
+    convert data N*256 matrix where each row will be
+    spike samples recorded in each channel
+
+    Parameters
+    ----------
+    no_of_spikes: int
+        Number of spikes occured in given time
+        duration
+    filename: str
+        Name of spike data file to be read
+
+    Returns
+    -------
+
     '''
 
     no_of_samples = no_of_spikes*num_channels*num_samples
 
     filepath = 'F:/Neuroscience/data/' + filename
-
-    data = list(file.read(no_of_samples))
 
     data = np.fromfile(filepath, dtype=np.int16, count=no_of_samples)
 
@@ -64,6 +133,9 @@ def spike_data_from_channels(file, no_of_spikes, filename):
     channel4_data = []
     spike_data_4_channel = []
 
+    # Store spike data for each channel in seperate
+    # list
+
     for i in range(0,no_of_samples,4):
 
         channel1_data.append(data[i])
@@ -71,9 +143,17 @@ def spike_data_from_channels(file, no_of_spikes, filename):
         channel3_data.append(data[i+2])
         channel4_data.append(data[i+3])
 
+    # Store spike data in  N*256 dim matrix
+    # where each row corresponds to different
+    # spikes and columns corresponds to data
+    # recorded on 4 channels seprately by
+    # dividing data in the 64 equal chunks
+     
     for i in range(no_of_spikes):
 
         shift_idx = 0
+
+        # Start and end bin index for given spikes
 
         start_idx = int(num_samples*(i+shift_idx))
         end_idx = int(num_samples*(i+1+shift_idx))
@@ -90,13 +170,15 @@ def spike_data_from_channels(file, no_of_spikes, filename):
         except:
             continue
 
+    # Convert all the spike data from list to array, it will facilitate
+    # lots of numpy array functionalities that will be later helpful  
+
     channel1_data  =np.array(channel1_data)
     channel2_data  =np.array(channel2_data)
     channel3_data  =np.array(channel3_data)
     channel4_data  =np.array(channel4_data)
 
     spike_data_4_channel = np.array(spike_data_4_channel)
-    #print(spike_data_4_channel)
 
     return channel1_data, channel2_data, channel3_data, channel4_data, spike_data_4_channel
 
@@ -157,52 +239,198 @@ def peaks_gmm_model(features_array,
 
     return feature_probs
 
+def jsonify_simulation_labels(num_spikes,
+                              spike_time_data,
+                              ground_truth_time,
+                              ground_truth):
+
+    '''
+    '''
+
+    # this index used to reduce the search for
+    # simulation spike time, once the spike time
+    # has been searched it is not possible that 
+    # next spike will occur at previous time bins
+    # because spikes will occur in increasing
+    # time order only.
+     
+    idx_readed = 0
+
+    # This list contains final labels for spike
+    # i.e. labels for simulation spike will be
+    # either ground truth spike label if it occurs
+    # in certain range of original spike time
+    # or it will be labeled as zero i.e. noise
+     
+    ground_noise_label = []
+
+    # Iterating over number of spike events in given
+    # duration of time
+
+    for i in range(num_spikes):
+
+        # Simulation Time of current spike 
+
+        simulation_time = spike_time_data[i]
+
+        # Default label for current spike as true
+        # if it does not gets any other label
+
+        spike_is_noise = True
+        
+        # Counting number of iterations completed
+        # for searching spike in ground_truth spike
+        # time
+
+        j = 0
+
+        # Iterating over ground truth spike times
+         
+        for real_time in ground_truth_time[idx_readed:]:
+
+            # Count increases by 1 as one iteration for seaching spike 
+            # started
+
+            j += 1
+
+            # If difference of samples between simulation and real time is 
+            # less then 2 samples, then spikes will be considered as true
+            # spike 
+
+            if np.abs(simulation_time-real_time) < 2:
+
+                # As simulatio spike has been detected as true spike
+                # it should be given label from the ground truth 
+                
+                ground_noise_label.append(int(ground_truth[ground_truth_time.index(real_time)]))
+                
+                # Update the index upto which spike time has already been
+                # checked
+                
+                idx_readed = ground_truth_time.index(real_time)
+                
+                # As spike has been detected as true spike it will get noise label
+                # as false and inner for loop will break
+
+                spike_is_noise = False
+                break
+
+            # If real time has exceeded above simulation time
+            # then there is no more possibility of finding
+            # ground truth corresponding to simulation spike
+            # and the loop will break
+
+            elif real_time>simulation_time:
+                break
+        
+        print('Number of iterations completed:', j, i)
+        
+        # Give spike label zero if it is noise
+
+        if spike_is_noise:
+            #print('Hitted Noise')
+            ground_noise_label.append(0)
+
+    #print('Ground Noise Level:',ground_noise_label)
+    #print('DataSet Ground Labels without Noise:', ground_truth[:num_spikes])
+
+    # Store labels of the spikes in dictionary
+
+    ground_noise_label_dict = {'Ground_Noise_Label': ground_noise_label}
+    #print(ground_noise_label_dict)
+
+    # create json object from the spike labels
+    
+    json_object = json.dumps(ground_noise_label_dict)
+  
+    # Writing to sample.json
+
+    # Write json file from json object
+
+    with open("ground_noise_label.json", "w") as outfile:
+        outfile.write(json_object)
+
+
 if __name__ == '__main__':
-    num_spikes = 10000
 
-    spike_binary_file = read_binary_file('Spikes')
+    # Time duration to be considered
 
-    ch1_data, ch2_data, ch3_data, ch4_data,spike_data_4_channel = spike_data_from_channels(spike_binary_file ,
-                                                                                           num_spikes,
-                                                                                           'Spikes')
+    time_duration_hrs = 1
+    
+    # Whether to jsonify label or not
 
-    spike_time_binary_file = read_binary_file('SpikeTimes')
+    jsonify_output = False
+    
+    # Call function to read spike time data
 
-    spike_time_data = spike_times(spike_time_binary_file,
-                                  num_spikes,
+    spike_time_data = spike_times(time_duration_hrs,
                                   'SpikeTimes')
+    
+    # Call function to read parameters file
 
     mat_data = read_mat_file('dataset_params')
 
     print('Parameters of dataset:', mat_data.keys())
-    print('Parameter Units lenght', mat_data['sp_u'][0][0][0])
-    print('Spike Times:', spike_time_data[:20])
+    
+    # Ground truth labels for true spikes
 
     ground_truth = mat_data['sp_u'][0][0][0]#[:num_spikes]
+    
+    # Ground truth time for true spikes
+
     ground_truth_time = list(mat_data['sp'][0][0][0])
 
-    ground_noise_label = []
-    idx_readed = 0
+    # Number of spikes corresponding to given time duration
 
-    print(len(ch1_data), len(ch2_data), len(ch3_data), len(ch4_data))
+    num_spikes = len(spike_time_data)
 
-    print('Shape of spike data',np.shape(spike_data_4_channel))
+    print('Number of spikes in',time_duration_hrs, 'hours duration are', num_spikes)
 
-    avg_ch_data = avg_spikes_channels(ch1_data,
-                                    ch2_data,
-                                    ch3_data,
-                                    ch4_data)
+    # Jsonify ground truth labels for simulation spikes
 
-    avg_multi_spikes = avg_multiple_spikes(avg_ch_data,
-                                        num_spikes)
+    if jsonify_output:
+        jsonify_simulation_labels(num_spikes,
+                                  spike_time_data,
+                                  ground_truth_time,
+                                  ground_truth)
 
-    pca = PCA(n_components = 2)
+    # Read spike waveforms from binary file 
+    # and convert waveform data into N*256
+    # matrix
+
+    ch1_data, ch2_data, ch3_data, ch4_data,spike_data_4_channel = spike_data_from_channels(num_spikes,
+                                                                                           'Spikes')
+
+    # Scale down spike waveforms by 10
+
+    spike_data_4_channel = spike_data_4_channel/10
+
+    #print(len(ch1_data), len(ch2_data), len(ch3_data), len(ch4_data))
+
+    #print('Shape of spike data',np.shape(spike_data_4_channel))
+
+    #avg_ch_data = avg_spikes_channels(ch1_data,
+    #                                ch2_data,
+    #                                ch3_data,
+    #                                ch4_data)
+
+    #avg_multi_spikes = avg_multiple_spikes(avg_ch_data,
+    #                                    num_spikes)
+
+    # create object for 8 PCA components
+
+    pca = PCA(n_components = 8)
+
+    # Create PCA model with spike data
 
     pca.fit(spike_data_4_channel)
 
+    # Convert 256 dim spike data into 8 dim
+    # PCA components
+    
     Y = pca.fit_transform(spike_data_4_channel)
 
-    num_peaks_feature_gmm = 8
+    #num_peaks_feature_gmm = 8
     #feature_array = np.array([Y[:,0]])
     #feature_array = np.reshape(feature_array,(len(Y[:,0]),1))
     #feature_gmm_object = gmm_feature(feature_array, 
@@ -211,9 +439,9 @@ if __name__ == '__main__':
     #peaks_feature_gmm_model = peaks_gmm_model(feature_array,
     #                                          feature_gmm_object)
 
-    gm = GaussianMixture(n_components=7 , random_state=0).fit(Y)
+    #gm = GaussianMixture(n_components=7 , random_state=0).fit(Y)
 
-    labels = gm.predict(Y)
+    #labels = gm.predict(Y)
 
     #X_axis = np.array([np.linspace(-3000,6000,100)])
     #Y_axis = np.array([np.linspace(-3000,5000)]).T
@@ -221,7 +449,8 @@ if __name__ == '__main__':
     #Z_axis = 
 
     
-
+    '''
+    
     for i in range(num_spikes):
 
         simulation_time = spike_time_data[i]
@@ -233,9 +462,10 @@ if __name__ == '__main__':
 
             j += 1
 
-            if np.abs(simulation_time-real_time) < 1:
+            #print(simulation_time, real_time, np.abs(simulation_time-real_time))
+            if np.abs(simulation_time-real_time) < 2:
 
-                ground_noise_label.append(ground_truth[ground_truth_time.index(real_time)])
+                ground_noise_label.append(int(ground_truth[ground_truth_time.index(real_time)]))
                 idx_readed = ground_truth_time.index(real_time)
                 spike_is_noise = False
                 break
@@ -244,22 +474,114 @@ if __name__ == '__main__':
         
         print('Number of iterations completed:', j, i)
         if spike_is_noise:
+            #print('Hitted Noise')
             ground_noise_label.append(0)
 
+    #print('Ground Noise Level:',ground_noise_label)
+    #print('DataSet Ground Labels without Noise:', ground_truth[:num_spikes])
+
+    ground_noise_label_dict = {'Ground_Noise_Label': ground_noise_label}
+    #print(ground_noise_label_dict)
+
+    
+    json_object = json.dumps(ground_noise_label_dict)
+  
+    # Writing to sample.json
+    with open("ground_noise_label.json", "w") as outfile:
+        outfile.write(json_object)
+'''
+    # Read data corresponding to labels of simulation spikes
+     
+    file = open('ground_noise_label.json')
+    ground_noise_label = json.load(file)['Ground_Noise_Label']
+
+    # convert labels from list to array
+
     ground_noise_label = np.array(ground_noise_label)
+    
+    # Filter data which is not noise and others labels need
+    # to be filtered as per requirements 
+
+    Y_ground_truth = Y[np.all([ ground_noise_label!=0,
+                                ground_noise_label!=8,
+                                ground_noise_label!=7], axis = 0)]
+    Y_ground_label = ground_noise_label[np.all([
+                                        ground_noise_label!=0,
+                                        ground_noise_label!=8,
+                                        ground_noise_label!=7], axis = 0)]
+
+    # Filter noise only, any one of the data will be used from above one
+    # and the this one
+
     Y_ground_truth = Y[ground_noise_label!=0]
     Y_ground_label = ground_noise_label[ground_noise_label!=0]
 
-    gm = GaussianMixture(n_components=8 , random_state=0).fit(Y_ground_truth)
+    # Calculate isolation distance corresponding to ground truth cluster
+    # labels
 
-    labels = gm.predict(Y_ground_truth)
+    groundtruth_iso_dist = isolation_distance(Y_ground_truth,Y_ground_label)
+    print(groundtruth_iso_dist)
+    #gm = GaussianMixture(n_components=8 , random_state=0).fit(Y_ground_truth)
+
+    #labels = gm.predict(Y_ground_truth)
+
+    # Create model for clustering
+    clustering = MeanShift(bandwidth=100).fit(Y_ground_truth)
+    
+    # Calculate prediction labels using clustering model
+
+    labels = clustering.labels_
 
     print('Shape of spike data',np.shape(Y))
 
+    # Calculate accuracy of the prediction using ground
+    # truth labels and prediction labels
+ 
+    acc_metrics = accuracy_metrics(labels, Y_ground_label,max(ground_truth_time[:num_spikes]))
+    print('Accuracy of the model:',acc_metrics)
+
+    # Calculate isolation distance for prediction label clusters
+
+    prediction_iso_dist = isolation_distance(Y_ground_truth,labels)
+    print('Isolation Distance:',prediction_iso_dist)
+    
+    # Calculate avg accuracy of all the clusters
+
+    avg_acc = 0
+    for unit_acc in acc_metrics:
+
+        avg_acc += acc_metrics[unit_acc]['acc']
+
+    avg_acc /= len(acc_metrics)
+
+    print('Avg Accuracy:', avg_acc)
+
+    # Create list for accuracy metrics and isolation distance 
+    # metric to make scatter plot
+    
+    acc_list = []
+    spike_rate_list = []
+    iso_dist_list = []
+    for unit_acc in acc_metrics:
+
+        print(unit_acc,':',acc_metrics[unit_acc])
+
+        acc_list.append(acc_metrics[unit_acc]['acc'])
+        #spike_rate_list.append(acc_metrics[unit_acc]['spike_rate'])
+        iso_dist_list.append(np.log10(groundtruth_iso_dist[unit_acc]['iso_dist']))
+
+
     plt.subplot(2,1,1)
     plt.scatter(Y_ground_truth[:,0], Y_ground_truth[:,1], c = labels)#facecolors='none', edgecolors=labels)
+    plt.title('Prediction')
     plt.subplot(2,1,2)
     plt.scatter(Y_ground_truth[:,0], Y_ground_truth[:,1], c = Y_ground_label)#facecolors='none', edgecolors=ground_noise_label)#c = ground_noise_label )
+    plt.title('Ground Truth')
+    plt.show()
+
+    plt.scatter(iso_dist_list, acc_list)
+    plt.xlabel('Isolation Distance in log scale')
+    plt.ylabel('Accuracy')
     plt.show()
 
     #plt.plot(ch3_data[:64])
