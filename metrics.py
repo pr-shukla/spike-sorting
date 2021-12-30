@@ -3,8 +3,8 @@ from numpy.core.numeric import identity
 from scipy.spatial.distance import mahalanobis
 
 def accuracy_metrics(prediction_label, 
-            groundtruth_label,
-            max_time):
+                     groundtruth_label,
+                     max_time):
 
     '''
     '''
@@ -21,6 +21,8 @@ def accuracy_metrics(prediction_label,
     for i in different_groundtruth_labels:
 
         groundtruth_accuracy_dict = {}
+        groundtruth_precision_dict = {}
+        groundtruth_recall_dict = {}
         prediction_corresponding_i_unit = np.array(prediction_label)[groundtruth_label==i]
 
         for j in different_prediction_labels:
@@ -31,14 +33,24 @@ def accuracy_metrics(prediction_label,
             n3 = ((list(prediction_label).count(j))-n2)
 
             acc = n2/(n1+n2+n3)
+            prec = n2/(n2+n3)
+            recall = n2/(n1+n2)
 
             groundtruth_accuracy_dict[j] = acc
+            groundtruth_precision_dict[j] = prec
+            groundtruth_recall_dict[j] = recall
 
         #print(groundtruth_accuracy_dict)
         max_acc = max(groundtruth_accuracy_dict.values())
+        max_acc_idx = list(groundtruth_accuracy_dict.values()).index(max_acc)
+
+        max_acc_prec = list(groundtruth_precision_dict.values())[max_acc_idx]
+        max_acc_recall = list(groundtruth_recall_dict.values())[max_acc_idx]
 
         num_spikes = list(groundtruth_label).count(i)
-        final_output['Unit '+str(i)] = {'acc':max_acc,'spike_rate':num_spikes*10**7/max_time}
+        final_output['Unit '+str(i)] = {'acc':max_acc,
+                                        'prec':max_acc_prec,
+                                        'recall':max_acc_recall}#,'spike_rate':num_spikes*10**7/max_time}
 
     return final_output
 
@@ -84,12 +96,14 @@ def isolation_distance(X, labels):
 
         new_cluster = np.concatenate([X_with_label_i,nearest_X])
 
-        mean_new_cluster = np.sum(new_cluster,axis=0)/(2*num_spikes_with_label_i)
+        #mean_new_cluster = np.sum(new_cluster,axis=0)/(2*num_spikes_with_label_i)
+        mean_new_cluster = np.sum(X_with_label_i,axis=0)/(num_spikes_with_label_i)
 
         #print(np.cov(new_cluster))#+10**-3)
 
-        identity_matrix = np.eye(2*num_spikes_with_label_i,2*num_spikes_with_label_i)
-        inv_cov_cluster = np.linalg.inv(np.cov(new_cluster.T))#,identity_matrix)[0]#+10**1)
+        #identity_matrix = np.eye(2*num_spikes_with_label_i,2*num_spikes_with_label_i)
+        #inv_cov_cluster = np.linalg.inv(np.cov(new_cluster.T))#,identity_matrix)[0]#+10**1)
+        inv_cov_cluster = np.linalg.inv(np.cov(X_with_label_i.T))#,identity_matrix)[0]#+10**1)
         #print(inv_cov_cluster)
         #print('Unit ', str(i))
         print(nearest_X[num_spikes_with_label_i-1],mean_new_cluster)
