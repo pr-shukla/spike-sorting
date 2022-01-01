@@ -3,8 +3,7 @@ from numpy.core.numeric import identity
 from scipy.spatial.distance import mahalanobis
 
 def accuracy_metrics(prediction_label, 
-                     groundtruth_label,
-                     max_time):
+                     groundtruth_label):
 
     '''
     '''
@@ -17,7 +16,7 @@ def accuracy_metrics(prediction_label,
     
     different_prediction_labels = list(range(min(prediction_label),max(prediction_label)+1))
     different_groundtruth_labels = list(range(min(groundtruth_label),max(groundtruth_label)+1))
-    print(different_groundtruth_labels,different_prediction_labels)
+    #print(different_groundtruth_labels,different_prediction_labels)
     for i in different_groundtruth_labels:
 
         groundtruth_accuracy_dict = {}
@@ -32,9 +31,20 @@ def accuracy_metrics(prediction_label,
             n2 = list(prediction_corresponding_i_unit).count(j)
             n3 = ((list(prediction_label).count(j))-n2)
 
-            acc = n2/(n1+n2+n3)
-            prec = n2/(n2+n3)
-            recall = n2/(n1+n2)
+            try:
+                acc = n2/(n1+n2+n3)
+            except:
+                acc = 0
+            
+            try:
+                prec = n2/(n2+n3)
+            except:
+                prec = 0
+            
+            try:
+                recall = n2/(n1+n2)
+            except:
+                recall = 0
 
             groundtruth_accuracy_dict[j] = acc
             groundtruth_precision_dict[j] = prec
@@ -100,14 +110,20 @@ def isolation_distance(X, labels):
         mean_new_cluster = np.sum(X_with_label_i,axis=0)/(num_spikes_with_label_i)
 
         #print(np.cov(new_cluster))#+10**-3)
-
+        mahalnobis_dist = 0
+        
         #identity_matrix = np.eye(2*num_spikes_with_label_i,2*num_spikes_with_label_i)
         #inv_cov_cluster = np.linalg.inv(np.cov(new_cluster.T))#,identity_matrix)[0]#+10**1)
-        inv_cov_cluster = np.linalg.inv(np.cov(X_with_label_i.T))#,identity_matrix)[0]#+10**1)
+        
+        try:
+            inv_cov_cluster = np.linalg.inv(np.cov(X_with_label_i.T))#,identity_matrix)[0]#+10**1)
+        except:
+            mahalnobis_dist = 0
+            continue
         #print(inv_cov_cluster)
         #print('Unit ', str(i))
-        print(nearest_X[num_spikes_with_label_i-1],mean_new_cluster)
-        mahalnobis_dist = mahalanobis(nearest_X[num_spikes_with_label_i-1],mean_new_cluster,inv_cov_cluster)
+        #print(nearest_X[num_spikes_with_label_i-1],mean_new_cluster)
+        #mahalnobis_dist = mahalanobis(nearest_X[num_spikes_with_label_i-1],mean_new_cluster,inv_cov_cluster)
         #print(mahalnobis_dist)
         try:
             mahalnobis_dist = mahalanobis(nearest_X[num_spikes_with_label_i-1],mean_new_cluster,inv_cov_cluster)

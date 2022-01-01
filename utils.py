@@ -18,6 +18,10 @@ num_channels = 4
 
 num_samples = 64
 
+# Sampling frequency
+
+freq_sampling = 30000
+
 def read_mat_file(filename):
     
     '''
@@ -360,7 +364,30 @@ if __name__ == '__main__':
     # Whether to jsonify label or not
 
     jsonify_output = False
+
+    # Time duration for 1 processing chunk
+
+    time_duration_chunk = 0.01
+
+    # Number of samples in total time duration
+
+    num_samples_total_time = time_duration_hrs*3600*30000
+
+    # Number of samples for 1 chunk 
+
+    num_samples_one_chunk = time_duration_chunk*3600*30000
+
+    # Number of iterations to comlete total time bu chunks
+
+    if num_samples_total_time%num_samples_one_chunk == 0:
+
+        num_iterations = int(num_samples_total_time//num_samples_one_chunk)
+
+    else:
+
+        num_iterations = int(num_samples_total_time//num_samples_one_chunk + 1)
     
+    print('Number of iterations required for complete spike sorting:', num_iterations)
     # Call function to read spike time data
 
     spike_time_data = spike_times(time_duration_hrs,
@@ -405,6 +432,143 @@ if __name__ == '__main__':
 
     spike_data_4_channel = spike_data_4_channel/10
 
+    # Averaged Accuracy over all time
+
+    avg_acc_all_time = 0
+
+    # Read data corresponding to labels of simulation spikes
+     
+    file = open('ground_noise_label.json')
+    ground_noise_label = json.load(file)['Ground_Noise_Label']
+
+    # convert labels from list to array
+
+    ground_noise_label = np.array(ground_noise_label)
+    
+    # Number of Spikes sorted
+
+    num_spikes_sorted = 0
+
+    # Iterating to do spike sorting on chunks of data
+
+    for i in range(num_iterations):
+
+        # Spike Time Data for a chunk in iteration
+
+        spike_time_data_single_chunk = spike_time_data[np.all([i*num_samples_one_chunk<=spike_time_data,
+                                                               spike_time_data<(i+1)*num_samples_one_chunk],axis=0)]
+
+        # Number of spikes in current chunk
+
+        num_spikes_single_chunk = len(spike_time_data_single_chunk)
+
+        print('Number of Spikes in given chunk:', num_spikes_single_chunk)
+
+        # Spike Data for single chunk
+
+        spike_data_4_channel_single_chunk = spike_data_4_channel[num_spikes_sorted:
+                                                                 num_spikes_sorted+num_spikes_single_chunk]
+
+        # Ground Labels of Spikes for current chunk
+
+        ground_noise_label_single_channel = ground_noise_label[num_spikes_sorted:
+                                                               num_spikes_sorted+num_spikes_single_chunk]
+
+        # Number of Spikes sorted
+
+        num_spikes_sorted += num_spikes_single_chunk
+
+        # create object for 8 PCA components
+
+        pca = PCA(n_components = 8)
+
+        # Create PCA model with spike data
+
+        pca.fit(spike_data_4_channel_single_chunk)
+
+        # Convert 256 dim spike data into 8 dim
+        # PCA components
+        
+        Y = pca.fit_transform(spike_data_4_channel_single_chunk)
+
+        # Filter data which is not noise and others labels need
+        # to be filtered as per requirements 
+
+        Y_ground_truth = Y[np.all([ ground_noise_label_single_channel!=0,
+                                    ground_noise_label_single_channel!=8,
+                                    ground_noise_label_single_channel!=7], axis = 0)]
+        Y_ground_label = ground_noise_label_single_channel[np.all([
+                                            ground_noise_label_single_channel!=0,
+                                            ground_noise_label_single_channel!=8,
+                                            ground_noise_label_single_channel!=7], axis = 0)]
+
+        # Filter noise only, any one of the data will be used from above one
+        # and the this one
+
+        Y_ground_truth = Y[ground_noise_label_single_channel!=0]
+        Y_ground_label = ground_noise_label_single_channel[ground_noise_label_single_channel!=0]
+
+        # Calculate isolation distance corresponding to ground truth cluster
+        # labels
+
+        groundtruth_iso_dist = isolation_distance(Y_ground_truth,Y_ground_label)
+        #print(groundtruth_iso_dist)
+        #gm = GaussianMixture(n_components=8 , random_state=0).fit(Y_ground_truth)
+
+        #labels = gm.predict(Y_ground_truth)
+
+        # Create model for clustering
+        clustering = MeanShift(bandwidth=100).fit(Y_ground_truth)
+        
+        # Calculate prediction labels using clustering model
+
+        labels = clustering.labels_
+
+        #print('Shape of spike data',np.shape(Y))
+
+        # Calculate accuracy of the prediction using ground
+        # truth labels and prediction labels
+    
+        acc_metrics = accuracy_metrics(labels, Y_ground_label)
+        #print('Accuracy of the model:',acc_metrics)
+
+        # Calculate isolation distance for prediction label clusters
+
+        prediction_iso_dist = isolation_distance(Y_ground_truth,labels)
+        #print('Isolation Distance:',prediction_iso_dist)
+        
+        # Calculate avg accuracy of all the clusters
+
+        avg_acc = 0
+        for unit_acc in acc_metrics:
+
+            avg_acc += acc_metrics[unit_acc]['acc']
+
+        avg_acc /= len(acc_metrics)
+
+        print('Avg Accuracy:', avg_acc)
+
+        avg_acc_all_time += avg_acc
+
+        # Create list for accuracy metrics and isolation distance 
+        # metric to make scatter plot of metrics
+        '''
+        acc_list = []
+        spike_rate_list = []
+        iso_dist_list = []
+        for unit_acc in acc_metrics:
+
+            print(unit_acc,':',acc_metrics[unit_acc])
+
+            acc_list.append(acc_metrics[unit_acc]['acc'])
+            #spike_rate_list.append(acc_metrics[unit_acc]['spike_rate'])
+            iso_dist_list.append(np.log10(groundtruth_iso_dist[unit_acc]['iso_dist']))
+'''
+    avg_acc_all_time /= num_iterations
+
+    print('Average Accuracy for given overall time:', avg_acc_all_time)
+        
+
     #print(len(ch1_data), len(ch2_data), len(ch3_data), len(ch4_data))
 
     #print('Shape of spike data',np.shape(spike_data_4_channel))
@@ -418,7 +582,7 @@ if __name__ == '__main__':
     #                                    num_spikes)
 
     # create object for 8 PCA components
-
+    '''
     pca = PCA(n_components = 8)
 
     # Create PCA model with spike data
@@ -429,7 +593,7 @@ if __name__ == '__main__':
     # PCA components
     
     Y = pca.fit_transform(spike_data_4_channel)
-
+'''
     #num_peaks_feature_gmm = 8
     #feature_array = np.array([Y[:,0]])
     #feature_array = np.reshape(feature_array,(len(Y[:,0]),1))
@@ -490,14 +654,8 @@ if __name__ == '__main__':
     with open("ground_noise_label.json", "w") as outfile:
         outfile.write(json_object)
 '''
-    # Read data corresponding to labels of simulation spikes
-     
-    file = open('ground_noise_label.json')
-    ground_noise_label = json.load(file)['Ground_Noise_Label']
-
-    # convert labels from list to array
-
-    ground_noise_label = np.array(ground_noise_label)
+    
+    '''
     
     # Filter data which is not noise and others labels need
     # to be filtered as per requirements 
@@ -569,7 +727,7 @@ if __name__ == '__main__':
         acc_list.append(acc_metrics[unit_acc]['acc'])
         #spike_rate_list.append(acc_metrics[unit_acc]['spike_rate'])
         iso_dist_list.append(np.log10(groundtruth_iso_dist[unit_acc]['iso_dist']))
-
+'''
 
     plt.subplot(2,1,1)
     plt.scatter(Y_ground_truth[:,0], Y_ground_truth[:,1], c = labels)#facecolors='none', edgecolors=labels)
@@ -579,10 +737,10 @@ if __name__ == '__main__':
     plt.title('Ground Truth')
     plt.show()
 
-    plt.scatter(iso_dist_list, acc_list)
-    plt.xlabel('Isolation Distance in log scale')
-    plt.ylabel('Accuracy')
-    plt.show()
+    #plt.scatter(iso_dist_list, acc_list)
+    #plt.xlabel('Isolation Distance in log scale')
+    #plt.ylabel('Accuracy')
+    #plt.show()
 
     #plt.plot(ch3_data[:64])
     #plt.show()
