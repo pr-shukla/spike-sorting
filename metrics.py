@@ -3,8 +3,7 @@ from numpy.core.numeric import identity
 from scipy.spatial.distance import mahalanobis
 
 def accuracy_metrics(prediction_label, 
-                     groundtruth_label,
-                     max_time):
+                     groundtruth_label):
 
     '''
     '''
