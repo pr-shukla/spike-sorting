@@ -16,7 +16,23 @@ def main(time,
          pca_components=None,
          meanshift_band_width=None
          ):
+    
+    '''
+    Main code executing spike sorting algorithm
 
+    Parameters
+    ----------
+    time: np.array
+
+    processing_time_chunk: np.array
+
+    waveform_feature_scaling: int
+
+    pca_components: int
+
+    meanshift_band_width: int
+    '''
+                  
     spike_time_object = SpikeTime(time_duration=time,
                                   processing_time_duration=processing_time_chunk,
                                   sampling_frequency=30000)
