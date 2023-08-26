@@ -91,14 +91,19 @@ class Metrics:
                            labels):
 
         '''
-        Implementation to find isolation distance metrics
+        Implementation to find mahalnobis distance metrics
 
         Parameters
         ----------
         X: np.array
             Spike data
+            
         labels: np.array
-        
+            Labels predicted by clustering algorithms
+
+        Returns
+        -------
+        output: dict
         '''
 
         max_label = max(labels)
