@@ -5,11 +5,28 @@ from scipy.spatial.distance import mahalanobis
 
 class Metrics:
 
+    '''
+    Provides different metrics to measure the performance of spike sorting algorithm
+    '''
+
     def accuracy_metrics(self,
                          prediction_label, 
                          groundtruth_label):
 
         '''
+        Calculates accuray, precision and recall of spike sorting algorithm
+
+        Parameters
+        ----------
+        prediction_label: np.array
+            Cluster labels predicted by clustering algorithm
+        
+        groundtruth_label: np.array
+            Original Cluster label provided to each spikes
+
+        Returns
+        final_output: dict
+            Different type of metrics stored in key:value pair format
         '''
 
         final_output = {}
@@ -74,6 +91,14 @@ class Metrics:
                            labels):
 
         '''
+        Implementation to find isolation distance metrics
+
+        Parameters
+        ----------
+        X: np.array
+            Spike data
+        labels: np.array
+        
         '''
 
         max_label = max(labels)
